@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
-lightgbm
+lightgbm==4.0.0
 scikit-learn
 pickle-mixin
