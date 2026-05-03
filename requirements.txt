@@ -1,5 +1,6 @@
-streamlit
+streamlit>=1.30.0
 pandas
-numpy>=1.26.4
+numpy>=1.26.2
 lightgbm
 scikit-learn
+altair<5
