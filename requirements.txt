@@ -1,6 +1,5 @@
 streamlit
 pandas
-numpy
-lightgbm==4.0.0
+numpy>=1.26.2
+lightgbm
 scikit-learn
-pickle-mixin
