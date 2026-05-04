@@ -1,6 +1,6 @@
-streamlit>=1.30.0
-pandas
-numpy>=1.26.2
-lightgbm
+streamlit==1.29.0
+pandas==2.0.3
+numpy>=1.23
+altair==4.2.2
 scikit-learn
-altair<5
+joblib
