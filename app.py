@@ -3,19 +3,40 @@ import pandas as pd
 import numpy as np
 import pickle
 from datetime import datetime
+import os
 
-# --- PAGE SETUP ---
 st.set_page_config(page_title="Fraud Detection", page_icon="💳", layout="wide")
+st.title("💳 Credit Card Fraud Detection System")
+
+# --- CHECK FILES ---
+if not os.path.exists("model_bundle.pkl"):
+    st.error("❌ model_bundle.pkl not found")
+    st.stop()
 
 # --- LOAD MODEL ---
 @st.cache_resource
 def load_model():
-    with open('lgb_model.pkl', 'rb') as f:
-        return pickle.load(f)
+    with open('model_bundle.pkl', 'rb') as f:
+        data = pickle.load(f)
+    return data["model"], data["preprocessor"]
 
-model = load_model()
+model, preprocessor = load_model()
 
-# --- HAVERSINE FUNCTION ---
+# --- LOAD OPTIONS ---
+@st.cache_data
+def load_options():
+    df = pd.read_csv('fraudTrain.csv', nrows=5000)
+    return {
+        "category": sorted(df["category"].unique()),
+        "gender": sorted(df["gender"].unique()),
+        "city": sorted(df["city"].unique()),
+        "state": sorted(df["state"].unique()),
+        "job": sorted(df["job"].unique())
+    }
+
+options = load_options()
+
+# --- DISTANCE ---
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371
     lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
@@ -24,37 +45,21 @@ def haversine(lat1, lon1, lat2, lon2):
     a = np.sin(dlat/2)**2 + np.cos(lat1)*np.cos(lat2)*np.sin(dlon/2)**2
     return 2 * R * np.arcsin(np.sqrt(a))
 
-# --- LOAD MAPPINGS ---
-@st.cache_data
-def get_mappings():
-    df = pd.read_csv('fraudTrain.csv')
-    mappings = {}
-    cols = ['category','gender','city','state','job']
-    for col in cols:
-        vals = sorted(df[col].unique())
-        mappings[col] = {v:i for i,v in enumerate(vals)}
-        mappings[col+"_list"] = vals
-    return mappings
-
-mappings = get_mappings()
-
 # --- UI ---
-st.title("💳 Credit Card Fraud Detection System")
-
 st.sidebar.header("Input Details")
 
-category = st.sidebar.selectbox("Category", mappings['category_list'])
+category = st.sidebar.selectbox("Category", options['category'])
 amt = st.sidebar.number_input("Amount", value=100.0)
 
 date = st.sidebar.date_input("Date", datetime.now())
 time = st.sidebar.time_input("Time", datetime.now().time())
 
-gender = st.sidebar.selectbox("Gender", mappings['gender_list'])
+gender = st.sidebar.selectbox("Gender", options['gender'])
 age = st.sidebar.slider("Age", 18, 120, 30)
-job = st.sidebar.selectbox("Job", mappings['job_list'])
+job = st.sidebar.selectbox("Job", options['job'])
 
-city = st.sidebar.selectbox("City", mappings['city_list'])
-state = st.sidebar.selectbox("State", mappings['state_list'])
+city = st.sidebar.selectbox("City", options['city'])
+state = st.sidebar.selectbox("State", options['state'])
 city_pop = st.sidebar.number_input("City Population", value=50000)
 
 lat = st.sidebar.number_input("Cardholder Lat", value=34.05)
@@ -64,24 +69,21 @@ mlon = st.sidebar.number_input("Merchant Lon", value=-118.44)
 
 dt = datetime.combine(date, time)
 
-# --- PREDICTION ---
+# --- PREDICT ---
 if st.button("Detect Fraud"):
 
-    # Distance
     distance = haversine(lat, lon, mlat, mlon)
 
-    # Features
     features = pd.DataFrame([{
-        'category': mappings['category'][category],
+        'category': category,
         'amt': amt,
-        'gender': mappings['gender'][gender],
-        'city': mappings['city'][city],
-        'state': mappings['state'][state],
+        'gender': gender,
+        'city': city,
+        'state': state,
         'lat': lat,
         'long': lon,
         'city_pop': city_pop,
-        'job': mappings['job'][job],
-        'unix_time': int(dt.timestamp()),
+        'job': job,
         'merch_lat': mlat,
         'merch_long': mlon,
         'age': age,
@@ -92,46 +94,25 @@ if st.button("Detect Fraud"):
         'weekday': dt.weekday()
     }])
 
-    # ✅ IMPORTANT: same transform as training
-    features['amt'] = np.log1p(features['amt'])
+    features_processed = preprocessor.transform(features)
+    prob = model.predict(features_processed)[0]
 
-    # Model prediction (LightGBM Booster)
-    prob = model.predict(features)[0]
-
-    # 🚨 Smart rules (real-world logic)
-    if amt > 10000:
-        prob = max(prob, 0.7)
-
-    if distance > 100:
-        prob = max(prob, 0.6)
-
-    # Final decision
     is_fraud = prob > 0.5
 
-    # --- OUTPUT ---
     st.subheader("Result")
 
     if is_fraud:
-        st.error("🚨 High Risk Fraud Detected")
+        st.error("🚨 Fraud Detected")
     else:
-        st.success("✅ Low Risk Transaction")
+        st.success("✅ Safe Transaction")
 
-    st.metric("Fraud Probability", f"{prob:.6f}")
+    st.metric("Fraud Probability", f"{prob:.4f}")
     st.progress(float(prob))
 
-    # Map
-    st.subheader("Transaction Map")
-    map_df = pd.DataFrame({
+    st.map(pd.DataFrame({
         "lat": [lat, mlat],
         "lon": [lon, mlon]
-    })
-    st.map(map_df)
-
-    # Debug info
-    with st.expander("Details"):
-        st.write("Distance (km):", distance)
-        st.write("Final Probability:", prob)
-        st.dataframe(features)
+    }))
 
 else:
-    st.info("Fill details and click Detect Fraud")
+    st.info("Enter details and click Detect Fraud")

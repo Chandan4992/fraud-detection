@@ -1,0 +1,7 @@
+import pickle
+
+with open('model_bundle.pkl', 'wb') as f:
+    pickle.dump({
+        "model": model,
+        "preprocessor": preprocessor
+    }, f)
